@@ -45,8 +45,12 @@
             }
           };
 
-          // Manejar la recepción de la oferta de video
-          signalingServer.on('video-offer', async (message) => {
+          
+        });
+
+    });
+    // Manejar la recepción de la oferta de video
+    signalingServer.on('video-offer', async (message) => {
             await peerConnection.setRemoteDescription(new RTCSessionDescription(message));
             remoteDescriptionSet = true;
             while (iceCandidatesQueue.length) {
@@ -75,8 +79,6 @@
               iceCandidatesQueue.push(candidate);
             }
           });
-        });
-    });
   </script>
 </body>
 </html>
