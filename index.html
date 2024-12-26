@@ -40,7 +40,6 @@
         const remoteVideo = document.getElementById('remoteVideo');
         if (remoteVideo.srcObject !== event.streams[0]) {
           remoteVideo.srcObject = event.streams[0];
-          remoteVideo.play();
         }
       };
     }
@@ -81,10 +80,11 @@
 
     document.getElementById('shareButton').addEventListener('click', () => {
       // Obtener acceso a la pantalla
-      navigator.mediaDevices.getUserMedia({ video: true, audio: true })
+      navigator.mediaDevices.getDisplayMedia({ video: true, audio: true })
         .then(stream => {
           const localVideo = document.getElementById('shareScreen');
           localVideo.srcObject = stream;
+          localVideo.muted = true; // Asegurarse de que el video local esté silenciado
 
           // Añadir tracks al peer connection
           stream.getTracks().forEach(track => peerConnection.addTrack(track, stream));
