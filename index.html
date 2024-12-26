@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>CAll</title>
+  <title>Call</title>
   <style>
     video {
       border: 1px solid black;
@@ -13,111 +13,70 @@
 <body>
   <h1>Call</h1>
   <div>
-    <video id="shareScreen" ></video><br>
-    <video id="remoteVideo" ></video><br>
+    <video id="shareScreen"></video><br>
+    <video id="remoteVideo"></video><br>
     <button>SHARE SCREEN</button>
-
   </div>
   <script src="https://cdn.socket.io/4.0.0/socket.io.min.js"></script>
   <script>
     const signalingServer = io.connect('https://play-senas-springboot-api.onrender.com');
     const configuration = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
+    let peerConnection;
+    let remoteDescriptionSet = false;
+    const iceCandidatesQueue = [];
+
     document.querySelector('button').addEventListener('click', () => {
- 
-        // Obtener acceso a la media
-    navigator.mediaDevices.getUserMedia({ video: true, audio: true })
-      .then(stream => {
-        const localVideo = document.getElementById('shareScreen');
-        localVideo.srcObject = stream;
-        localVideo.play();
+      // Obtener acceso a la media
+      navigator.mediaDevices.getUserMedia({ video: true, audio: true })
+        .then(stream => {
+          const localVideo = document.getElementById('shareScreen');
+          localVideo.srcObject = stream;
+          localVideo.play();
 
-        const peerConnection = new RTCPeerConnection(configuration);
+          peerConnection = new RTCPeerConnection(configuration);
 
-        // Añadir tracks al peer connection
-        stream.getTracks().forEach(track => peerConnection.addTrack(track, stream));
+          // Añadir tracks al peer connection
+          stream.getTracks().forEach(track => peerConnection.addTrack(track, stream));
 
-        // Manejar ICE candidates
-        peerConnection.onicecandidate = event => {
-          if (event.candidate) {
-            signalingServer.emit('ice-candidate', event.candidate);
-          }
-        };
+          // Manejar ICE candidates
+          peerConnection.onicecandidate = event => {
+            if (event.candidate) {
+              signalingServer.emit('ice-candidate', event.candidate);
+            }
+          };
 
-        // Crear oferta
-        peerConnection.createOffer()
-          .then(offer => peerConnection.setLocalDescription(offer))
-          .then(() => {
-            signalingServer.emit('video-offer', peerConnection.localDescription);
+          // Manejar la recepción de la oferta de video
+          signalingServer.on('video-offer', async (message) => {
+            await peerConnection.setRemoteDescription(new RTCSessionDescription(message));
+            remoteDescriptionSet = true;
+            while (iceCandidatesQueue.length) {
+              await peerConnection.addIceCandidate(iceCandidatesQueue.shift());
+            }
+            const answer = await peerConnection.createAnswer();
+            await peerConnection.setLocalDescription(answer);
+            signalingServer.emit('video-answer', answer);
           });
 
-        // Manejar respuesta
-        signalingServer.on('video-answer', answer => {
-          peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
+          // Manejar la recepción de la respuesta de video
+          signalingServer.on('video-answer', async (message) => {
+            await peerConnection.setRemoteDescription(new RTCSessionDescription(message));
+            remoteDescriptionSet = true;
+            while (iceCandidatesQueue.length) {
+              await peerConnection.addIceCandidate(iceCandidatesQueue.shift());
+            }
+          });
+
+          // Manejar la recepción de candidatos ICE
+          signalingServer.on('ice-candidate', async (message) => {
+            const candidate = new RTCIceCandidate(message);
+            if (remoteDescriptionSet) {
+              await peerConnection.addIceCandidate(candidate);
+            } else {
+              iceCandidatesQueue.push(candidate);
+            }
+          });
         });
-
-        // Manejar nuevos ICE candidates
-        signalingServer.on('ice-candidate', candidate => {
-          peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
-        });
-
-        // Mostrar video remoto
-        peerConnection.ontrack = event => {
-          const remoteVideo = document.getElementById('remoteVideo');
-          remoteVideo.srcObject = event.streams[0];
-          remoteVideo.play();
-        };
-      })
-      .catch(error => {
-        console.error('Error al acceder a la media:', error);
-      });
-    })
-
-
-    
-    //     // Obtener acceso a la media
-    // navigator.mediaDevices.getDisplayMedia({ video: true, audio: true })
-    //   .then(stream => {
-    //     const localVideo = document.getElementById('shareScreen');
-    //     localVideo.srcObject = stream;
-
-    //     const peerConnection = new RTCPeerConnection(configuration);
-
-    //     // Añadir tracks al peer connection
-    //     stream.getTracks().forEach(track => peerConnection.addTrack(track, stream));
-
-    //     // Manejar ICE candidates
-    //     peerConnection.onicecandidate = event => {
-    //       if (event.candidate) {
-    //         signalingServer.emit('ice-candidate', event.candidate);
-    //       }
-    //     };
-
-    //     // Crear oferta
-    //     peerConnection.createOffer()
-    //       .then(offer => peerConnection.setLocalDescription(offer))
-    //       .then(() => {
-    //         signalingServer.emit('video-offer', peerConnection.localDescription);
-    //       });
-
-    //     // Manejar respuesta
-    //     signalingServer.on('video-answer', answer => {
-    //       peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
-    //     });
-
-    //     // Manejar nuevos ICE candidates
-    //     signalingServer.on('ice-candidate', candidate => {
-    //       peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
-    //     });
-
-    //     // Mostrar video remoto
-    //     peerConnection.ontrack = event => {
-    //       const remoteVideo = document.getElementById('remoteVideo');
-    //       remoteVideo.srcObject = event.streams[0];
-    //     };
-    //   })
-    //   .catch(error => {
-    //     console.error('Error al acceder a la media:', error);
-    //   });
+    });
   </script>
 </body>
 </html>
