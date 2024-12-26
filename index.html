@@ -13,9 +13,9 @@
 <body>
   <h1>Call</h1>
   <div>
-    <video id="shareScreen"></video><br>
-    <video id="remoteVideo"></video><br>
-    <button>SHARE SCREEN</button>
+    <video id="shareScreen" autoplay playsinline></video><br>
+    <video id="remoteVideo" autoplay playsinline></video><br>
+    <button id="shareButton">SHARE SCREEN</button>
   </div>
   <script src="https://cdn.socket.io/4.0.0/socket.io.min.js"></script>
   <script>
@@ -25,60 +25,80 @@
     let remoteDescriptionSet = false;
     const iceCandidatesQueue = [];
 
-    document.querySelector('button').addEventListener('click', () => {
-      // Obtener acceso a la media
-      navigator.mediaDevices.getUserMedia({ video: true, audio: true })
+    function initializePeerConnection() {
+      peerConnection = new RTCPeerConnection(configuration);
+
+      // Manejar ICE candidates
+      peerConnection.onicecandidate = event => {
+        if (event.candidate) {
+          signalingServer.emit('ice-candidate', event.candidate);
+        }
+      };
+
+      // Manejar la recepción de la pista remota
+      peerConnection.ontrack = event => {
+        const remoteVideo = document.getElementById('remoteVideo');
+        if (remoteVideo.srcObject !== event.streams[0]) {
+          remoteVideo.srcObject = event.streams[0];
+        }
+      };
+    }
+
+    // Inicializar la conexión al cargar la página
+    initializePeerConnection();
+
+    // Manejar la recepción de la oferta de video
+    signalingServer.on('video-offer', async (message) => {
+      await peerConnection.setRemoteDescription(new RTCSessionDescription(message));
+      remoteDescriptionSet = true;
+      while (iceCandidatesQueue.length) {
+        await peerConnection.addIceCandidate(iceCandidatesQueue.shift());
+      }
+      const answer = await peerConnection.createAnswer();
+      await peerConnection.setLocalDescription(answer);
+      signalingServer.emit('video-answer', answer);
+    });
+
+    // Manejar la recepción de la respuesta de video
+    signalingServer.on('video-answer', async (message) => {
+      await peerConnection.setRemoteDescription(new RTCSessionDescription(message));
+      remoteDescriptionSet = true;
+      while (iceCandidatesQueue.length) {
+        await peerConnection.addIceCandidate(iceCandidatesQueue.shift());
+      }
+    });
+
+    // Manejar la recepción de candidatos ICE
+    signalingServer.on('ice-candidate', async (message) => {
+      const candidate = new RTCIceCandidate(message);
+      if (remoteDescriptionSet) {
+        await peerConnection.addIceCandidate(candidate);
+      } else {
+        iceCandidatesQueue.push(candidate);
+      }
+    });
+
+    document.getElementById('shareButton').addEventListener('click', () => {
+      // Obtener acceso a la pantalla
+      navigator.mediaDevices.getDisplayMedia({ video: true, audio: true })
         .then(stream => {
           const localVideo = document.getElementById('shareScreen');
           localVideo.srcObject = stream;
-          localVideo.play();
-
-          peerConnection = new RTCPeerConnection(configuration);
 
           // Añadir tracks al peer connection
           stream.getTracks().forEach(track => peerConnection.addTrack(track, stream));
 
-          // Manejar ICE candidates
-          peerConnection.onicecandidate = event => {
-            if (event.candidate) {
-              signalingServer.emit('ice-candidate', event.candidate);
-            }
-          };
-
-          
+          // Crear y enviar la oferta de video
+          peerConnection.createOffer()
+            .then(offer => peerConnection.setLocalDescription(offer))
+            .then(() => {
+              signalingServer.emit('video-offer', peerConnection.localDescription);
+            });
+        })
+        .catch(error => {
+          console.error('Error al obtener la pantalla:', error);
         });
-
     });
-    // Manejar la recepción de la oferta de video
-    signalingServer.on('video-offer', async (message) => {
-            await peerConnection.setRemoteDescription(new RTCSessionDescription(message));
-            remoteDescriptionSet = true;
-            while (iceCandidatesQueue.length) {
-              await peerConnection.addIceCandidate(iceCandidatesQueue.shift());
-            }
-            const answer = await peerConnection.createAnswer();
-            await peerConnection.setLocalDescription(answer);
-            signalingServer.emit('video-answer', answer);
-          });
-
-          // Manejar la recepción de la respuesta de video
-          signalingServer.on('video-answer', async (message) => {
-            await peerConnection.setRemoteDescription(new RTCSessionDescription(message));
-            remoteDescriptionSet = true;
-            while (iceCandidatesQueue.length) {
-              await peerConnection.addIceCandidate(iceCandidatesQueue.shift());
-            }
-          });
-
-          // Manejar la recepción de candidatos ICE
-          signalingServer.on('ice-candidate', async (message) => {
-            const candidate = new RTCIceCandidate(message);
-            if (remoteDescriptionSet) {
-              await peerConnection.addIceCandidate(candidate);
-            } else {
-              iceCandidatesQueue.push(candidate);
-            }
-          });
   </script>
 </body>
 </html>
