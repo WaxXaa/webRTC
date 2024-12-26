@@ -27,29 +27,42 @@ app.get('/', (req, res) => {
 });
 
 io.on('connection', (socket) => {
-  console.log('Nuevo cliente conectado');
+  console.log('Nuevo cliente conectado:', socket.id);
+
+  // Notificar a los demás usuarios que un nuevo usuario se ha conectado
+  socket.broadcast.emit('user-connected', socket.id);
 
   // Manejar la oferta de video
   socket.on('video-offer', (message) => {
     console.log('Oferta de video recibida:', message);
-    socket.broadcast.emit('video-offer', message);
+    socket.to(message.to).emit('video-offer', {
+      sdp: message.sdp,
+      from: socket.id
+    });
   });
 
   // Manejar la respuesta de video
   socket.on('video-answer', (message) => {
     console.log('Respuesta de video recibida:', message);
-    socket.broadcast.emit('video-answer', message);
+    socket.to(message.to).emit('video-answer', {
+      sdp: message.sdp,
+      from: socket.id
+    });
   });
 
   // Manejar los candidatos ICE
   socket.on('ice-candidate', (message) => {
     console.log('Candidato ICE recibido:', message);
-    socket.broadcast.emit('ice-candidate', message);
+    socket.to(message.to).emit('ice-candidate', {
+      candidate: message.candidate,
+      from: socket.id
+    });
   });
 
   // Manejar la desconexión del cliente
   socket.on('disconnect', () => {
-    console.log('Cliente desconectado');
+    console.log('Cliente desconectado:', socket.id);
+    socket.broadcast.emit('user-disconnected', socket.id);
   });
 });
 
