@@ -4,7 +4,6 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>CAll</title>
-  <script src="/socket.io/socket.io.js"></script>
   <style>
     video {
       border: 1px solid black;
@@ -19,6 +18,7 @@
     <button>SHARE SCREEN</button>
 
   </div>
+  <script src="https://cdn.socket.io/4.0.0/socket.io.min.js"></script>
   <script>
     const signalingServer = io.connect('https://play-senas-springboot-api.onrender.com');
     const configuration = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
