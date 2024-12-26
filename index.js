@@ -8,6 +8,9 @@ const io = socketIO(server);
 
 const port = 3000;
 
+app.get('/', (req, res) => {
+  res.send('Servidor de videoconferencia');
+});
 io.on('connection', (socket) => {
   console.log('Nuevo cliente conectado');
 
