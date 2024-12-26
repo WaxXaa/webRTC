@@ -5,7 +5,14 @@ const cors = require('cors');
 
 const app = express();
 const server = http.createServer(app);
-const io = socketIO(server);
+const io = socketIO(server, {
+  cors: {
+    origin: 'https://waxxaa.github.io',
+    methods: ['GET', 'POST'],
+    allowedHeaders: ['Content-Type'],
+    credentials: true
+  }
+});
 
 const port = 3000;
 
