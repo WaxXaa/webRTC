@@ -1,6 +1,7 @@
 const express = require('express');
 const http = require('http');
 const socketIO = require('socket.io');
+const cors = require('cors');
 
 const app = express();
 const server = http.createServer(app);
@@ -8,9 +9,16 @@ const io = socketIO(server);
 
 const port = 3000;
 
+app.use(cors({
+  origin: 'https://waxxaa.github.io',
+  methods: ['GET', 'POST'],
+  allowedHeaders: ['Content-Type']
+}));
+
 app.get('/', (req, res) => {
   res.send('Servidor de videoconferencia');
 });
+
 io.on('connection', (socket) => {
   console.log('Nuevo cliente conectado');
 
