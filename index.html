@@ -2,104 +2,178 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Call</title>
   <style>
     video {
       border: 1px solid black;
+      width: 300px;
+      height: 200px;
+      margin: 5px;
     }
   </style>
 </head>
 <body>
   <h1>Call</h1>
-  <div>
-    <video id="shareScreen" autoplay playsinline muted></video><br>
+  <div id="videos">
+    <video id="localVideo" autoplay playsinline muted></video><br>
     <button id="shareButton">SHARE SCREEN</button>
   </div>
+  
   <script src="https://cdn.socket.io/4.0.0/socket.io.min.js"></script>
   <script>
-    const signalingServer = io.connect('https://play-senas-springboot-api.onrender.com');
+    const signalingServer = io.connect('https://play-senas-springboot-api.onrender.com'); // Reemplaza con tu servidor
     const configuration = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
-    let peerConnection;
-    let remoteDescriptionSet = false;
-    const iceCandidatesQueue = [];
+    const peerConnections = {}; // Almacenar conexiones por ID de socket
+    let localStream = null;
 
-    function initializePeerConnection() {
-      peerConnection = new RTCPeerConnection(configuration);
+
+    // Crear una conexión RTCPeerConnection para un nuevo usuario
+    function createPeerConnection(socketId) {
+      const peerConnection = new RTCPeerConnection(configuration);
+
+      // Añadir tracks locales a la conexión
+      if (localStream) {
+        localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
+      }
 
       // Manejar ICE candidates
       peerConnection.onicecandidate = event => {
         if (event.candidate) {
-          signalingServer.emit('ice-candidate', event.candidate);
+          signalingServer.emit('ice-candidate', {
+            candidate: event.candidate,
+            to: socketId
+          });
         }
       };
 
-      // Manejar la recepción de la pista remota
+      // Manejar la recepción de pistas remotas
       peerConnection.ontrack = event => {
-        const remoteVideo = document.createElement('video');
-        document.body.appendChild(remoteVideo);
-        if (remoteVideo.srcObject !== event.streams[0]) {
+        let remoteVideo = document.getElementById(`remoteVideo_${socketId}`);
+        if (!remoteVideo) {
+          remoteVideo = document.createElement('video');
+          remoteVideo.id = `remoteVideo_${socketId}`;
+          remoteVideo.autoplay = true;
+          remoteVideo.playsinline = true;
+          document.getElementById('videos').appendChild(remoteVideo);
+        }
+        if (!remoteVideo.srcObject) {
           remoteVideo.srcObject = event.streams[0];
         }
       };
+
+      return peerConnection;
     }
 
-    // Inicializar la conexión al cargar la página
-    initializePeerConnection();
+    // Manejar la conexión de un nuevo usuario
+    signalingServer.on('user-connected', socketId => {
+      console.log('Usuario conectado:', socketId);
+      const peerConnection = createPeerConnection(socketId);
+      peerConnections[socketId] = peerConnection;
 
-    // Manejar la recepción de la oferta de video
-    signalingServer.on('video-offer', async (message) => {
-      await peerConnection.setRemoteDescription(new RTCSessionDescription(message));
-      remoteDescriptionSet = true;
-      while (iceCandidatesQueue.length) {
-        await peerConnection.addIceCandidate(iceCandidatesQueue.shift());
-      }
-      const answer = await peerConnection.createAnswer();
-      await peerConnection.setLocalDescription(answer);
-      signalingServer.emit('video-answer', answer);
+      // Crear y enviar oferta de video
+      peerConnection.createOffer()
+        .then(offer => peerConnection.setLocalDescription(offer))
+        .then(() => {
+          signalingServer.emit('video-offer', {
+            sdp: peerConnection.localDescription,
+            to: socketId
+          });
+        })
+        .catch(error => {
+          console.error('Error al crear la oferta de video:', error);
+        });
     });
 
-    // Manejar la recepción de la respuesta de video
+    // Manejar la desconexión de un usuario
+    signalingServer.on('user-disconnected', socketId => {
+      console.log('Usuario desconectado:', socketId);
+      const remoteVideo = document.getElementById(`remoteVideo_${socketId}`);
+      if (remoteVideo) {
+        remoteVideo.remove();
+      }
+      if (peerConnections[socketId]) {
+        peerConnections[socketId].close();
+        delete peerConnections[socketId];
+      }
+    });
+
+    // Manejar la recepción de una oferta de video
+    signalingServer.on('video-offer', async (message) => {
+      const { sdp, from } = message;
+      const peerConnection = createPeerConnection(from);
+      peerConnections[from] = peerConnection;
+
+      try {
+        await peerConnection.setRemoteDescription(new RTCSessionDescription(sdp));
+        const answer = await peerConnection.createAnswer();
+        await peerConnection.setLocalDescription(answer);
+        signalingServer.emit('video-answer', {
+          sdp: peerConnection.localDescription,
+          to: from
+        });
+      } catch (error) {
+        console.error('Error al manejar la oferta de video:', error);
+      }
+    });
+
+    // Manejar la recepción de una respuesta de video
     signalingServer.on('video-answer', async (message) => {
-      await peerConnection.setRemoteDescription(new RTCSessionDescription(message));
-      remoteDescriptionSet = true;
-      while (iceCandidatesQueue.length) {
-        await peerConnection.addIceCandidate(iceCandidatesQueue.shift());
+      const { sdp, from } = message;
+      const peerConnection = peerConnections[from];
+      if (!peerConnection) {
+        console.error('No se encontró la conexión peer para:', from);
+        return;
+      }
+
+      try {
+        await peerConnection.setRemoteDescription(new RTCSessionDescription(sdp));
+      } catch (error) {
+        console.error('Error al establecer la descripción remota:', error);
       }
     });
 
     // Manejar la recepción de candidatos ICE
     signalingServer.on('ice-candidate', async (message) => {
-      const candidate = new RTCIceCandidate(message);
-      if (remoteDescriptionSet) {
-        await peerConnection.addIceCandidate(candidate);
-      } else {
-        iceCandidatesQueue.push(candidate);
+      const { candidate, from } = message;
+      const peerConnection = peerConnections[from];
+      if (!peerConnection) {
+        console.error('No se encontró la conexión peer para:', from);
+        return;
+      }
+
+      try {
+        await peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+      } catch (error) {
+        console.error('Error al añadir el candidato ICE:', error);
       }
     });
 
+    // Manejar el botón de compartir pantalla
     document.getElementById('shareButton').addEventListener('click', () => {
-      // Obtener acceso a la pantalla
       navigator.mediaDevices.getUserMedia({ video: true, audio: true })
         .then(stream => {
-          const localVideo = document.getElementById('shareScreen');
+          const localVideo = document.getElementById('localVideo');
           localVideo.srcObject = stream;
-          localVideo.muted = true; // Asegurarse de que el video local esté silenciado
+          localVideo.muted = true; // Asegurarse de que el audio local esté silenciado
+          localStream = stream;
 
-          // Añadir tracks al peer connection
-          stream.getTracks().forEach(track => peerConnection.addTrack(track, stream));
-
-          // Crear y enviar la oferta de video
-          peerConnection.createOffer()
-            .then(offer => peerConnection.setLocalDescription(offer))
-            .then(() => {
-              signalingServer.emit('video-offer', peerConnection.localDescription);
-            });
+          // Reemplazar las pistas en todas las conexiones peer
+          Object.values(peerConnections).forEach(peerConnection => {
+            const sender = peerConnection.getSenders().find(s => s.track.kind === 'video');
+            if (sender) {
+              sender.replaceTrack(stream.getVideoTracks()[0]);
+            }
+          });
         })
         .catch(error => {
-          console.error('Error al obtener la pantalla:', error);
+          console.error('Error al compartir la pantalla:', error);
         });
     });
+
+    // Emitir evento cuando el usuario está listo para recibir y compartir
+    signalingServer.emit('ready-to-share');
+    signalingServer.emit('ready-to-receive');
   </script>
 </body>
 </html>
