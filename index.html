@@ -14,7 +14,6 @@
   <h1>Call</h1>
   <div>
     <video id="shareScreen" autoplay playsinline muted></video><br>
-    <video id="remoteVideo" autoplay playsinline></video><br>
     <button id="shareButton">SHARE SCREEN</button>
   </div>
   <script src="https://cdn.socket.io/4.0.0/socket.io.min.js"></script>
@@ -37,7 +36,8 @@
 
       // Manejar la recepción de la pista remota
       peerConnection.ontrack = event => {
-        const remoteVideo = document.getElementById('remoteVideo');
+        const remoteVideo = document.createElement('video');
+        document.body.appendChild(remoteVideo);
         if (remoteVideo.srcObject !== event.streams[0]) {
           remoteVideo.srcObject = event.streams[0];
         }
