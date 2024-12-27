@@ -80,7 +80,7 @@
 
     document.getElementById('shareButton').addEventListener('click', () => {
       // Obtener acceso a la pantalla
-      navigator.mediaDevices.getDisplayMedia({ video: true, audio: true })
+      navigator.mediaDevices.getUserMedia({ video: true, audio: true })
         .then(stream => {
           const localVideo = document.getElementById('shareScreen');
           localVideo.srcObject = stream;
