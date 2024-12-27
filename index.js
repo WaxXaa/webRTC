@@ -7,7 +7,7 @@ const app = express();
 const server = http.createServer(app);
 const io = socketIO(server, {
   cors: {
-    origin: 'https://waxxaa.github.io',
+    origin: 'https://waxxaa.github.io', // Reemplaza con tu origen
     methods: ['GET', 'POST'],
     allowedHeaders: ['Content-Type'],
     credentials: true
@@ -16,6 +16,7 @@ const io = socketIO(server, {
 
 const port = 3000;
 
+// Middleware CORS
 app.use(cors({
   origin: 'https://waxxaa.github.io',
   methods: ['GET', 'POST'],
@@ -34,7 +35,7 @@ io.on('connection', (socket) => {
 
   // Manejar la oferta de video
   socket.on('video-offer', (message) => {
-    console.log('Oferta de video recibida:', message);
+    console.log('Oferta de video recibida de:', socket.id);
     socket.to(message.to).emit('video-offer', {
       sdp: message.sdp,
       from: socket.id
@@ -43,7 +44,7 @@ io.on('connection', (socket) => {
 
   // Manejar la respuesta de video
   socket.on('video-answer', (message) => {
-    console.log('Respuesta de video recibida:', message);
+    console.log('Respuesta de video recibida de:', socket.id);
     socket.to(message.to).emit('video-answer', {
       sdp: message.sdp,
       from: socket.id
@@ -52,7 +53,7 @@ io.on('connection', (socket) => {
 
   // Manejar los candidatos ICE
   socket.on('ice-candidate', (message) => {
-    console.log('Candidato ICE recibido:', message);
+    console.log('Candidato ICE recibido de:', socket.id);
     socket.to(message.to).emit('ice-candidate', {
       candidate: message.candidate,
       from: socket.id
